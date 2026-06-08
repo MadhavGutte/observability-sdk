@@ -29,7 +29,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/MadhavGutte/observability-sdk.git"
+    "url": "git+https://github.com/MadhavGutte/observability-sdk.git"
   },
   "publishConfig": {
     "access": "public"
@@ -50,5 +50,13 @@
   },
   "engines": {
     "node": ">=18.0.0"
-  }
+  },
+  "directories": {
+    "example": "examples",
+    "test": "tests"
+  },
+  "bugs": {
+    "url": "https://github.com/MadhavGutte/observability-sdk/issues"
+  },
+  "homepage": "https://github.com/MadhavGutte/observability-sdk#readme"
 }
