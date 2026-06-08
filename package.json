@@ -1,5 +1,5 @@
 {
-  "name": "@yourname/observability-sdk",
+  "name": "@madhavgutte/observability-sdk",
   "version": "1.0.0",
   "description": "Production-grade Node.js SDK for emitting observability events to Prometheus and ClickHouse",
   "main": "dist/index.js",
@@ -25,11 +25,11 @@
     "telemetry",
     "events"
   ],
-  "author": "Your Name <you@example.com>",
+  "author": "Madhav Gutte <guttemadhav@gmail.com>",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourname/observability-sdk.git"
+    "url": "https://github.com/MadhavGutte/observability-sdk.git"
   },
   "publishConfig": {
     "access": "public"
