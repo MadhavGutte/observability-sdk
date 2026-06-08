@@ -1,0 +1,33 @@
+# Build output
+dist/
+*.js.map
+*.d.ts.map
+
+# Dependencies
+node_modules/
+
+# Test coverage
+coverage/
+
+# Environment files — NEVER commit secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# TypeScript cache
+*.tsbuildinfo
