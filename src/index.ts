@@ -5,7 +5,7 @@
  *
  *   import { metrics } from '@observability/sdk';
  *
- *   await metrics.init({ appName: 'my-service', environment: 'production' });
+ *   await metrics.init({ appName: 'my-service', environment: 'production', apiUrl: 'http://localhost:3100/ingest' });
  *
  *   metrics.event('my-service', 'user_signup', 1, { plan: 'pro' });
  *   metrics.counter('http_requests_total', 1, { method: 'GET' });
@@ -26,7 +26,7 @@ export type {
   RetryConfig,
   BatchConfig,
   PrometheusConfig,
-  ClickHouseConfig,
+  IngestConfig,
   ObservabilityEvent,
   CounterMetric,
   GaugeMetric,

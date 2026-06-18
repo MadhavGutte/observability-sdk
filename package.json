@@ -1,7 +1,7 @@
 {
   "name": "@madhavgutte/observability-sdk",
   "version": "1.0.0",
-  "description": "Production-grade Node.js SDK for emitting observability events to Prometheus and ClickHouse",
+  "description": "Production-grade Node.js SDK for emitting observability events to Prometheus and a MySQL ingest proxy",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
@@ -21,9 +21,10 @@
     "observability",
     "metrics",
     "prometheus",
-    "clickhouse",
     "telemetry",
-    "events"
+    "events",
+    "mysql",
+    "ingest"
   ],
   "author": "Madhav Gutte <guttemadhav@gmail.com>",
   "license": "MIT",

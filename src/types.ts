@@ -53,15 +53,9 @@ export interface PrometheusConfig {
   prefix: string;
 }
 
-export interface ClickHouseConfig {
-  /** Whether to enable ClickHouse ingestion (default: true) */
-  enabled: boolean;
-  /** Full URL to the ClickHouse ingestion endpoint */
+export interface IngestConfig {
+  /** Full URL to the ingest proxy endpoint (e.g. 'http://localhost:3100/ingest') */
   url: string;
-  /** Target table name in ClickHouse */
-  table: string;
-  /** Optional authentication token */
-  apiKey?: string;
   /** Request timeout in ms (default: 10_000) */
   timeoutMs: number;
 }
@@ -79,8 +73,8 @@ export interface SDKConfig {
   batch: BatchConfig;
   /** Prometheus exporter configuration */
   prometheus: PrometheusConfig;
-  /** ClickHouse ingestion configuration */
-  clickhouse: ClickHouseConfig;
+  /** Ingest proxy configuration */
+  ingest: IngestConfig;
   /** Global labels appended to every event */
   globalLabels?: Labels;
 }
@@ -92,8 +86,9 @@ export type SDKInitOptions = {
   logLevel?: LogLevel;
   retry?: Partial<RetryConfig>;
   batch?: Partial<BatchConfig>;
+  /** URL of the observability ingest proxy (e.g. 'http://localhost:3100/ingest') */
+  apiUrl: string;
   prometheus?: Partial<PrometheusConfig>;
-  clickhouse?: Partial<ClickHouseConfig>;
   globalLabels?: Labels;
 };
 
@@ -101,7 +96,7 @@ export type SDKInitOptions = {
 // Event / Metric domain objects
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** A business event destined for ClickHouse */
+/** A business event to be ingested via the proxy */
 export interface ObservabilityEvent {
   /** SDK-level ID (for deduplication / idempotency) */
   id: string;
@@ -139,7 +134,7 @@ export interface GaugeMetric {
 // Transport / internal types
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** HTTP ingestion payload sent to ClickHouse */
+/** HTTP ingestion payload sent to the ingest proxy */
 export interface IngestionBatch {
   events: ObservabilityEvent[];
   sentAt: string;

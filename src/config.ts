@@ -4,7 +4,7 @@ import type {
   RetryConfig,
   BatchConfig,
   PrometheusConfig,
-  ClickHouseConfig,
+  IngestConfig,
 } from './types';
 
 const DEFAULT_RETRY: RetryConfig = {
@@ -28,18 +28,18 @@ const DEFAULT_PROMETHEUS: PrometheusConfig = {
   prefix: '',
 };
 
-const DEFAULT_CLICKHOUSE: ClickHouseConfig = {
-  enabled: true,
-  url: 'http://localhost:8123/ingest',
-  table: 'observability_events',
-  timeoutMs: 10_000,
-};
+const DEFAULT_INGEST_TIMEOUT_MS = 10_000;
 
 /**
  * Merges user-supplied init options with SDK defaults to produce a
  * fully-resolved SDKConfig.
  */
 export function resolveConfig(options: SDKInitOptions): SDKConfig {
+  const ingest: IngestConfig = {
+    url: options.apiUrl,
+    timeoutMs: DEFAULT_INGEST_TIMEOUT_MS,
+  };
+
   return {
     appName: options.appName,
     environment: options.environment,
@@ -48,6 +48,6 @@ export function resolveConfig(options: SDKInitOptions): SDKConfig {
     retry: { ...DEFAULT_RETRY, ...options.retry },
     batch: { ...DEFAULT_BATCH, ...options.batch },
     prometheus: { ...DEFAULT_PROMETHEUS, ...options.prometheus },
-    clickhouse: { ...DEFAULT_CLICKHOUSE, ...options.clickhouse },
+    ingest,
   };
 }

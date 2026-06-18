@@ -1,8 +1,8 @@
-# @observability/sdk
+# @madhavgutte/observability-sdk
 
 A production-grade Node.js/TypeScript SDK for emitting observability data:
 
-- **Business events** → ClickHouse (batched NDJson ingestion)
+- **Project events** → MySQL via the [ingest-proxy](../observability-infra) (batched JSON ingestion)
 - **Technical metrics** → Prometheus (scraped `/metrics` endpoint)
 
 ---
@@ -10,7 +10,7 @@ A production-grade Node.js/TypeScript SDK for emitting observability data:
 ## Installation
 
 ```bash
-npm install @observability/sdk
+npm install @madhavgutte/observability-sdk
 ```
 
 Requires **Node.js ≥ 18**.
@@ -20,21 +20,20 @@ Requires **Node.js ≥ 18**.
 ## Quick Start
 
 ```typescript
-import { metrics } from '@observability/sdk';
+import { metrics } from '@madhavgutte/observability-sdk';
 
 // 1. Initialise once at application startup
+//    'team' in globalLabels is written to the project_events.team column
 await metrics.init({
-  appName: 'checkout-service',
+  appName: 'my-af-observability',
   environment: 'production',
-  clickhouse: {
-    url: 'https://ingest.example.com/events',
-    table: 'business_events',
-    apiKey: process.env.CLICKHOUSE_API_KEY,
-  },
+  apiUrl: '<api-url/ingest>',
+  globalLabels: { team: 'my-team' },
 });
 
-// 2. Emit a business event (→ ClickHouse)
-metrics.event('checkout-service', 'order_placed', 149.99, { orderId: 'ord-001' });
+// 2. Emit a project event (→ MySQL via ingest-proxy)
+//    Pass status in payload — it maps to project_events.status
+metrics.event('my-af-observability', 'deploy', 42000, { status: 'success', environment: 'dev', version: 'abc123' });
 
 // 3. Increment a Prometheus counter (→ /metrics)
 metrics.counter('http_requests_total', 1, { method: 'POST', status: '200' });
@@ -56,12 +55,12 @@ Initialises the SDK. Must be called **once** before any metric methods.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `appName` | `string` | **required** | Name of your service |
+| `appName` | `string` | **required** | Name of your project — maps to `project_events.project_name` |
 | `environment` | `string` | **required** | `production`, `staging`, `development`, etc. |
+| `apiUrl` | `string` | **required** | Full URL of the ingest proxy endpoint (e.g. `http://localhost:3100/ingest`) |
 | `logLevel` | `string` | `'warn'` | `silent` \| `error` \| `warn` \| `info` \| `debug` |
-| `globalLabels` | `object` | `{}` | Labels appended to every metric and event |
+| `globalLabels` | `object` | `{}` | Labels appended to every event. **Set `team` here** to populate `project_events.team` |
 | `prometheus` | `object` | see below | Prometheus exporter config |
-| `clickhouse` | `object` | see below | ClickHouse ingestion config |
 | `batch` | `object` | see below | Batching config |
 | `retry` | `object` | see below | Retry config |
 
@@ -74,17 +73,6 @@ Initialises the SDK. Must be called **once** before any metric methods.
   prefix: '',           // prepended to all metric names
   collectDefaultMetrics: true,  // Node.js process metrics
   defaultLabels: {},
-}
-```
-
-#### `clickhouse` defaults
-```typescript
-{
-  enabled: true,
-  url: 'http://localhost:8123/ingest',
-  table: 'observability_events',
-  apiKey: undefined,    // sent as Bearer token
-  timeoutMs: 10_000,
 }
 ```
 
@@ -111,17 +99,24 @@ Initialises the SDK. Must be called **once** before any metric methods.
 
 ### `metrics.event(appName, eventName, value, payload?, labels?)`
 
-Enqueues a business event for delivery to ClickHouse.
+Enqueues a project event for delivery to MySQL via the ingest proxy.
 
 ```typescript
 metrics.event(
-  'checkout-service',         // appName
-  'order_placed',             // eventName  (alphanumeric, _ - . space)
-  149.99,                     // value      (finite number)
-  { orderId: 'ord-001' },     // payload    (any JSON object)
-  { region: 'eu-west-1' },   // labels     (key → string | number | boolean)
+  'my-af-observability',     // appName       → project_events.project_name
+  'deploy',                   // eventName     → project_events.event_type
+  42000,                      // value         → project_events.metric_value
+  {
+    status: 'success',        // payload.status → project_events.status (required for meaningful data)
+    version: 'abc123',        // remaining payload keys → project_events.metadata
+  },
+  { region: 'eu-west-1' },   // labels        → merged into project_events.metadata
 );
 ```
+
+> **`status` convention:** always pass `status` in `payload` with one of: `success`, `failed`, `skipped`. This is the value written to `project_events.status`. If omitted it defaults to `'unknown'`.
+
+> **`team` convention:** set `team` in `globalLabels` during `init()` rather than per-event. It is written to `project_events.team`.
 
 Throws `SDKValidationError` on invalid input.
 
@@ -147,7 +142,7 @@ Sets a Prometheus gauge to an arbitrary value (can be negative).
 
 ```typescript
 metrics.gauge('memory_heap_used_bytes', process.memoryUsage().heapUsed);
-metrics.gauge('temperature_c', -12.5);
+metrics.gauge('active_deployments', 3);
 ```
 
 ---
@@ -168,26 +163,39 @@ Flushes remaining events and stops the Prometheus HTTP server. Also called autom
 
 ---
 
-## ClickHouse Ingestion Contract
+## Ingest Proxy Contract
 
-The SDK sends **POST** requests with an NDJson body (one JSON object per line) to `clickhouse.url?table=<table>`.
+The SDK sends **POST** requests with a JSON array body to `apiUrl`.
 
-Each row has this shape:
+The SDK automatically maps its internal `ObservabilityEvent` fields to the `project_events` table shape:
+
+| SDK field | `project_events` column | Notes |
+|---|---|---|
+| `appName` | `project_name` | |
+| `globalLabels.team` | `team` | Set via `globalLabels: { team: '...' }` |
+| `eventName` | `event_type` | |
+| `payload.status` | `status` | Defaults to `'unknown'` if absent |
+| `value` | `metric_value` | Treat as count or duration in ms |
+| `payload` + `labels` + `environment` | `metadata` | Full JSON object |
+| `timestamp` | `occurred_at` | Converted to MySQL datetime |
+
+Example payload sent to the proxy:
 
 ```json
-{
-  "id": "uuid-v4",
-  "appName": "checkout-service",
-  "eventName": "order_placed",
-  "value": 149.99,
-  "payload": { "orderId": "ord-001" },
-  "labels": { "region": "eu-west-1" },
-  "timestamp": "2024-01-15T10:30:00.000Z",
-  "environment": "production"
-}
+[
+  {
+    "project_name": "my-app",
+    "team": "my-team",
+    "event_type": "deploy",
+    "status": "success",
+    "metric_value": 42000,
+    "metadata": { "status": "success", "version": "abc123", "environment": "production", "labels": { "team": "my-team" } },
+    "occurred_at": "2026-06-18 10:00:00"
+  }
+]
 ```
 
-Your ClickHouse table must have columns matching this schema (see [Setup Guide](#clickhouse-setup)).
+See the [ingest-proxy README](../observability-infra/README.md) for the full API reference including `GET /events`.
 
 ---
 
@@ -198,9 +206,9 @@ The SDK starts an HTTP server (default port **9464**). Point your Prometheus scr
 ```yaml
 # prometheus.yml
 scrape_configs:
-  - job_name: 'checkout-service'
+  - job_name: 'my-service'
     static_configs:
-      - targets: ['checkout-service:9464']
+      - targets: ['my-service:9464']
 ```
 
 ---
@@ -208,7 +216,7 @@ scrape_configs:
 ## Error Handling
 
 ```typescript
-import { SDKValidationError } from '@observability/sdk';
+import { SDKValidationError } from '@madhavgutte/observability-sdk';
 
 try {
   metrics.event('', 'bad', Infinity);
@@ -224,15 +232,87 @@ Non-retryable transport errors (4xx) are logged and dropped. Retryable errors (5
 
 ---
 
-## Using Multiple Instances
+## Examples
 
-The exported `metrics` is a singleton. For multiple instances (e.g., micro-frontends or workers with separate configs):
+### Business metric counts
+
+Use `event_type` as the metric name and `value` as the count. Always pass `status: 'recorded'` in payload for non-transactional metrics.
 
 ```typescript
-import { ObservabilitySDK } from '@observability/sdk';
+await metrics.init({
+  appName: 'my-crm',
+  environment: 'production',
+  apiUrl: 'http://localhost:3100/ingest',
+  globalLabels: { team: 'my-team' },
+});
+
+// Customers total = 100
+metrics.event('my-crm', 'customers_total', 100, {
+  status: 'recorded',
+  metric: 'customers_total',
+  value: 100,
+});
+
+// Subscribers count = 150
+metrics.event('my-crm', 'subscribers_count', 150, {
+  status: 'recorded',
+  metric: 'subscribers_count',
+  value: 150,
+});
+```
+
+This writes to `project_events` as:
+
+| `project_name` | `team` | `event_type` | `status` | `metric_value` | `metadata` |
+|---|---|---|---|---|---|
+| `my-crm` | `my-team` | `customers_total` | `recorded` | `100` | `{ metric: 'customers_total', value: 100, ... }` |
+| `my-crm` | `my-team` | `subscribers_count` | `recorded` | `150` | `{ metric: 'subscribers_count', value: 150, ... }` |
+
+### CI/CD pipeline events
+
+```typescript
+// Build succeeded in 12 seconds
+metrics.event('my-af-observability', 'build', 12000, {
+  status: 'success',
+  version: 'abc123',
+  branch: 'main',
+});
+
+// Deploy failed
+metrics.event('my-af-observability', 'deploy', 5000, {
+  status: 'failed',
+  environment: 'dev',
+  reason: 'health check timeout',
+});
+```
+
+### Query events back via the ingest proxy
+
+```bash
+# All CRM metrics recorded today
+curl "http://localhost:3100/events?project=my-crm&from=2026-06-18"
+
+# Only subscriber counts
+curl "http://localhost:3100/events?project=my-crm&from=2026-06-18" \
+  | node -e "const d=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')); console.log(JSON.stringify(d.filter(e=>e.event_type==='subscribers_count'), null, 2))"
+```
+
+---
+
+## Using Multiple Instances
+
+The exported `metrics` is a singleton. For multiple instances (e.g., separate workers with different configs):
+
+```typescript
+import { ObservabilitySDK } from '@madhavgutte/observability-sdk';
 
 const workerSDK = new ObservabilitySDK();
-await workerSDK.init({ appName: 'worker', environment: 'production' });
+await workerSDK.init({
+  appName: 'worker',
+  environment: 'production',
+  apiUrl: 'http://localhost:3100/ingest',
+  globalLabels: { team: 'my-team' },
+});
 ```
 
 ---
@@ -259,9 +339,28 @@ npm run test:watch
 
 ---
 
-## ClickHouse Setup
+## Database Setup
 
-See the [ClickHouse Self-Hosting Guide](#) in your setup documentation.
+The ingest proxy writes to a MySQL `project_events` table. Run this DDL against your MySQL instance before starting the proxy:
+
+```sql
+CREATE TABLE IF NOT EXISTS project_events (
+  id            BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  project_name  VARCHAR(255)    NOT NULL,
+  team          VARCHAR(255)    NOT NULL,
+  event_type    VARCHAR(100)    NOT NULL,
+  status        VARCHAR(50)     NOT NULL,
+  metric_value   INT UNSIGNED,
+  metadata      JSON,
+  occurred_at   DATETIME        NOT NULL,
+  created_at    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_project  (project_name),
+  INDEX idx_team     (team),
+  INDEX idx_occurred (occurred_at)
+);
+```
+
+See the [ingest-proxy README](../observability-infra/README.md) for full local setup instructions.
 
 ---
 

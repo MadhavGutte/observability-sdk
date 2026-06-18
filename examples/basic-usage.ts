@@ -17,6 +17,9 @@ async function main() {
     environment: 'production',
     logLevel: 'info',
 
+    // Required: URL of the observability ingest proxy
+    apiUrl: 'https://ingest.internal.example.com/ingest',
+
     // Prometheus: scrape endpoint at http://0.0.0.0:9464/metrics
     prometheus: {
       enabled: true,
@@ -24,15 +27,6 @@ async function main() {
       collectDefaultMetrics: true,
       prefix: 'checkout_',
       defaultLabels: { service: 'checkout' },
-    },
-
-    // ClickHouse: business events ingested via HTTP
-    clickhouse: {
-      enabled: true,
-      url: 'https://ingest.internal.example.com/events',
-      table: 'business_events',
-      apiKey: process.env.CLICKHOUSE_API_KEY,
-      timeoutMs: 8_000,
     },
 
     // Batching: flush every 5 s or when 200 events accumulate
@@ -57,7 +51,7 @@ async function main() {
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // 2. Emit business events  →  ClickHouse
+  // 2. Emit business events  →  ingest proxy
   //    metrics.event(appName, eventName, value, payload?, labels?)
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -109,7 +103,12 @@ async function main() {
   // ─────────────────────────────────────────────────────────────────────────
 
   const mySDK = new ObservabilitySDK();
-  await mySDK.init({ appName: 'worker-service', environment: 'staging', logLevel: 'debug' });
+  await mySDK.init({
+    appName: 'worker-service',
+    environment: 'staging',
+    logLevel: 'debug',
+    apiUrl: 'https://ingest.internal.example.com/ingest',
+  });
   mySDK.event('worker-service', 'job_processed', 1, { jobId: 'j-42', durationMs: 120 });
   await mySDK.shutdown();
 

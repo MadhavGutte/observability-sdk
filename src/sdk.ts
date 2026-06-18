@@ -12,7 +12,7 @@ import { Logger } from './logger';
 import { SchemaValidator } from './schema-validator';
 import { BatchQueue } from './batch-queue';
 import { PrometheusExporter } from './prometheus-exporter';
-import { ClickHouseClient } from './clickhouse-client';
+import { IngestClient } from './ingest-client';
 
 /**
  * ObservabilitySDK — the central class that orchestrates all SDK components.
@@ -32,7 +32,7 @@ export class ObservabilitySDK {
   private validator!: SchemaValidator;
   private queue!: BatchQueue;
   private prometheus!: PrometheusExporter;
-  private clickhouse!: ClickHouseClient;
+  private ingest!: IngestClient;
   private initialised = false;
 
   // ─── Lifecycle ─────────────────────────────────────────────────────────────
@@ -54,8 +54,8 @@ export class ObservabilitySDK {
 
     this.prometheus = new PrometheusExporter(this.config.prometheus, this.logger);
 
-    this.clickhouse = new ClickHouseClient(
-      this.config.clickhouse,
+    this.ingest = new IngestClient(
+      this.config.ingest,
       this.config.retry,
       this.logger,
     );
@@ -63,7 +63,7 @@ export class ObservabilitySDK {
     this.queue = new BatchQueue({
       config: this.config.batch,
       logger: this.logger,
-      onFlush: (events) => this.clickhouse.send(events),
+      onFlush: (events) => this.ingest.send(events),
     });
 
     // Forward queue events to consumers via process-level logging
@@ -81,7 +81,7 @@ export class ObservabilitySDK {
       appName: this.config.appName,
       environment: this.config.environment,
       prometheusEnabled: this.config.prometheus.enabled,
-      clickhouseEnabled: this.config.clickhouse.enabled,
+      ingestUrl: this.config.ingest.url,
     });
   }
 
@@ -101,7 +101,7 @@ export class ObservabilitySDK {
   // ─── Public API ────────────────────────────────────────────────────────────
 
   /**
-   * Emits a business event to ClickHouse via the batch queue.
+   * Emits a business event to the ingest proxy via the batch queue.
    *
    * @param appName   - Name of the application (e.g. 'checkout-service')
    * @param eventName - Logical event identifier (e.g. 'order_placed')
