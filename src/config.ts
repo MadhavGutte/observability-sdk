@@ -3,7 +3,6 @@ import type {
   SDKInitOptions,
   RetryConfig,
   BatchConfig,
-  PrometheusConfig,
   IngestConfig,
 } from './types';
 
@@ -18,14 +17,6 @@ const DEFAULT_BATCH: BatchConfig = {
   maxSize: 100,
   flushIntervalMs: 5_000,
   flushTimeoutMs: 30_000,
-};
-
-const DEFAULT_PROMETHEUS: PrometheusConfig = {
-  enabled: true,
-  port: 9464,
-  path: '/metrics',
-  collectDefaultMetrics: true,
-  prefix: '',
 };
 
 const DEFAULT_INGEST_TIMEOUT_MS = 10_000;
@@ -47,7 +38,6 @@ export function resolveConfig(options: SDKInitOptions): SDKConfig {
     globalLabels: options.globalLabels,
     retry: { ...DEFAULT_RETRY, ...options.retry },
     batch: { ...DEFAULT_BATCH, ...options.batch },
-    prometheus: { ...DEFAULT_PROMETHEUS, ...options.prometheus },
     ingest,
   };
 }

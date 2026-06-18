@@ -24,34 +24,6 @@ const eventInputSchema = z.object({
 
 export type EventInput = z.infer<typeof eventInputSchema>;
 
-// ─── counter() ───────────────────────────────────────────────────────────────
-
-const counterInputSchema = z.object({
-  name: z
-    .string()
-    .min(1, 'metric name must not be empty')
-    .max(256, 'metric name must not exceed 256 characters')
-    .regex(/^[a-zA-Z_:][a-zA-Z0-9_:]*$/, 'metric name must be a valid Prometheus metric name'),
-  value: z.number().nonnegative('counter value must be >= 0').finite(),
-  labels: labelsSchema.default({}),
-});
-
-export type CounterInput = z.infer<typeof counterInputSchema>;
-
-// ─── gauge() ─────────────────────────────────────────────────────────────────
-
-const gaugeInputSchema = z.object({
-  name: z
-    .string()
-    .min(1, 'metric name must not be empty')
-    .max(256, 'metric name must not exceed 256 characters')
-    .regex(/^[a-zA-Z_:][a-zA-Z0-9_:]*$/, 'metric name must be a valid Prometheus metric name'),
-  value: z.number().finite('gauge value must be a finite number'),
-  labels: labelsSchema.default({}),
-});
-
-export type GaugeInput = z.infer<typeof gaugeInputSchema>;
-
 // ─── Validator class ──────────────────────────────────────────────────────────
 
 export class SchemaValidator {
@@ -59,22 +31,6 @@ export class SchemaValidator {
     const result = eventInputSchema.safeParse(input);
     if (!result.success) {
       throw new SDKValidationError('event', result.error.issues);
-    }
-    return result.data;
-  }
-
-  validateCounter(input: unknown): CounterInput {
-    const result = counterInputSchema.safeParse(input);
-    if (!result.success) {
-      throw new SDKValidationError('counter', result.error.issues);
-    }
-    return result.data;
-  }
-
-  validateGauge(input: unknown): GaugeInput {
-    const result = gaugeInputSchema.safeParse(input);
-    if (!result.success) {
-      throw new SDKValidationError('gauge', result.error.issues);
     }
     return result.data;
   }

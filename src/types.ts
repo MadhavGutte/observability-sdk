@@ -38,21 +38,6 @@ export interface BatchConfig {
   flushTimeoutMs: number;
 }
 
-export interface PrometheusConfig {
-  /** Whether to enable Prometheus metrics (default: true) */
-  enabled: boolean;
-  /** Port for the /metrics HTTP endpoint (default: 9464) */
-  port: number;
-  /** Path for metrics endpoint (default: '/metrics') */
-  path: string;
-  /** Default labels added to all Prometheus metrics */
-  defaultLabels?: Labels;
-  /** Collect default Node.js metrics (default: true) */
-  collectDefaultMetrics: boolean;
-  /** Prefix for all metric names (default: '') */
-  prefix: string;
-}
-
 export interface IngestConfig {
   /** Full URL to the ingest proxy endpoint (e.g. 'http://localhost:3100/ingest') */
   url: string;
@@ -71,8 +56,6 @@ export interface SDKConfig {
   retry: RetryConfig;
   /** Batching configuration */
   batch: BatchConfig;
-  /** Prometheus exporter configuration */
-  prometheus: PrometheusConfig;
   /** Ingest proxy configuration */
   ingest: IngestConfig;
   /** Global labels appended to every event */
@@ -88,7 +71,6 @@ export type SDKInitOptions = {
   batch?: Partial<BatchConfig>;
   /** URL of the observability ingest proxy (e.g. 'http://localhost:3100/ingest') */
   apiUrl: string;
-  prometheus?: Partial<PrometheusConfig>;
   globalLabels?: Labels;
 };
 
@@ -116,20 +98,6 @@ export interface ObservabilityEvent {
   labels: Labels;
 }
 
-/** A counter metric (monotonically increasing, goes to Prometheus) */
-export interface CounterMetric {
-  name: string;
-  value: number;
-  labels: Labels;
-}
-
-/** A gauge metric (arbitrary up/down value, goes to Prometheus) */
-export interface GaugeMetric {
-  name: string;
-  value: number;
-  labels: Labels;
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Transport / internal types
 // ─────────────────────────────────────────────────────────────────────────────
@@ -153,6 +121,5 @@ export type SDKErrorCode =
   | 'INIT_REQUIRED'
   | 'SCHEMA_VALIDATION'
   | 'INGESTION_FAILED'
-  | 'PROMETHEUS_ERROR'
   | 'QUEUE_FULL'
   | 'FLUSH_TIMEOUT';

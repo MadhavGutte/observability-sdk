@@ -3,15 +3,14 @@ import type {
   SDKInitOptions,
   SDKConfig,
   ObservabilityEvent,
-  Labels,
   EventPayload,
+  Labels,
   FlushResult,
 } from './types';
 import { resolveConfig } from './config';
 import { Logger } from './logger';
 import { SchemaValidator } from './schema-validator';
 import { BatchQueue } from './batch-queue';
-import { PrometheusExporter } from './prometheus-exporter';
 import { IngestClient } from './ingest-client';
 
 /**
@@ -31,7 +30,6 @@ export class ObservabilitySDK {
   private logger!: Logger;
   private validator!: SchemaValidator;
   private queue!: BatchQueue;
-  private prometheus!: PrometheusExporter;
   private ingest!: IngestClient;
   private initialised = false;
 
@@ -52,8 +50,6 @@ export class ObservabilitySDK {
     this.logger = new Logger(this.config.logLevel, this.config.appName);
     this.validator = new SchemaValidator();
 
-    this.prometheus = new PrometheusExporter(this.config.prometheus, this.logger);
-
     this.ingest = new IngestClient(
       this.config.ingest,
       this.config.retry,
@@ -72,7 +68,6 @@ export class ObservabilitySDK {
     });
 
     this.queue.start();
-    await this.prometheus.start();
 
     this.registerShutdownHandlers();
 
@@ -80,7 +75,6 @@ export class ObservabilitySDK {
     this.logger.info('ObservabilitySDK initialised', {
       appName: this.config.appName,
       environment: this.config.environment,
-      prometheusEnabled: this.config.prometheus.enabled,
       ingestUrl: this.config.ingest.url,
     });
   }
@@ -93,7 +87,6 @@ export class ObservabilitySDK {
     if (!this.initialised) return;
     this.logger.info('ObservabilitySDK shutting down…');
     await this.queue.stop();
-    await this.prometheus.stop();
     this.initialised = false;
     this.logger.info('ObservabilitySDK shut down cleanly');
   }
@@ -141,42 +134,6 @@ export class ObservabilitySDK {
     };
 
     this.queue.enqueue(observabilityEvent);
-  }
-
-  /**
-   * Increments a Prometheus counter.
-   *
-   * @param name   - Prometheus metric name (must match /^[a-zA-Z_:][a-zA-Z0-9_:]*$/)
-   * @param value  - Amount to increment by (must be >= 0, default: 1)
-   * @param labels - Label dimensions
-   *
-   * @example
-   *   metrics.counter('http_requests_total', 1, { method: 'GET', status: '200' });
-   */
-  counter(name: string, value = 1, labels: Labels = {}): void {
-    this.assertInitialised('counter');
-
-    const validated = this.validator.validateCounter({ name, value, labels });
-    const mergedLabels = { ...this.config.globalLabels, ...validated.labels };
-    this.prometheus.incrementCounter(validated.name, validated.value, mergedLabels);
-  }
-
-  /**
-   * Sets a Prometheus gauge to an arbitrary value.
-   *
-   * @param name   - Prometheus metric name
-   * @param value  - Value to set (can be negative)
-   * @param labels - Label dimensions
-   *
-   * @example
-   *   metrics.gauge('memory_usage_bytes', process.memoryUsage().heapUsed);
-   */
-  gauge(name: string, value: number, labels: Labels = {}): void {
-    this.assertInitialised('gauge');
-
-    const validated = this.validator.validateGauge({ name, value, labels });
-    const mergedLabels = { ...this.config.globalLabels, ...validated.labels };
-    this.prometheus.setGauge(validated.name, validated.value, mergedLabels);
   }
 
   /**

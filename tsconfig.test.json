@@ -9,9 +9,10 @@
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "baseUrl": ".",
+    "types": ["vitest/globals", "node"],
     "paths": {
       "@src/*": ["src/*"]
     }
   },
-  "include": ["src/**/*", "tests/**/*"]
+  "include": ["src/**/*", "tests/**/*", "vitest.config.ts"]
 }

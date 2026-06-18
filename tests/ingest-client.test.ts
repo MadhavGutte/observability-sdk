@@ -1,4 +1,3 @@
-import nock from 'nock';
 import { IngestClient } from '../src/ingest-client';
 import { Logger } from '../src/logger';
 import type { ObservabilityEvent } from '../src/types';
@@ -31,18 +30,19 @@ function makeEvent(name = 'test_event'): ObservabilityEvent {
 }
 
 describe('IngestClient', () => {
-  afterEach(() => {
-    nock.cleanAll();
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
   });
 
   it('sends events as a JSON array to the correct URL', async () => {
     let receivedBody: unknown;
-    nock('http://ingest.example.com')
-      .post('/ingest')
-      .reply(200, function (_uri, requestBody) {
-        receivedBody = requestBody;
-        return { status: 'ok', inserted: 2 };
-      });
+    fetchMock.mockImplementationOnce(async (_url: string, init?: RequestInit) => {
+      receivedBody = JSON.parse(init?.body as string);
+      return new Response(JSON.stringify({ status: 'ok', inserted: 2 }), { status: 200 });
+    });
 
     const client = new IngestClient(defaultConfig, defaultRetry, silentLogger);
     await client.send([makeEvent('build'), makeEvent('deploy')]);
@@ -56,12 +56,10 @@ describe('IngestClient', () => {
 
   it('maps ObservabilityEvent fields to the proxy ProjectEvent shape', async () => {
     let receivedBody: unknown;
-    nock('http://ingest.example.com')
-      .post('/ingest')
-      .reply(200, function (_uri, requestBody) {
-        receivedBody = requestBody;
-        return { status: 'ok', inserted: 1 };
-      });
+    fetchMock.mockImplementationOnce(async (_url: string, init?: RequestInit) => {
+      receivedBody = JSON.parse(init?.body as string);
+      return new Response(JSON.stringify({ status: 'ok', inserted: 1 }), { status: 200 });
+    });
 
     const event: ObservabilityEvent = {
       id: 'evt-1',
@@ -87,26 +85,23 @@ describe('IngestClient', () => {
   });
 
   it('sends the X-Batch-Size header', async () => {
-    nock('http://ingest.example.com', {
-      reqheaders: { 'x-batch-size': '3' },
-    })
-      .post('/ingest')
-      .reply(200, {});
+    fetchMock.mockResolvedValueOnce(new Response('{}', { status: 200 }));
 
     const client = new IngestClient(defaultConfig, defaultRetry, silentLogger);
     await client.send([makeEvent(), makeEvent(), makeEvent()]);
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect((init?.headers as Record<string, string>)['X-Batch-Size']).toBe('3');
   });
 
   it('no-ops when events array is empty', async () => {
     const client = new IngestClient(defaultConfig, defaultRetry, silentLogger);
     await expect(client.send([])).resolves.toBeUndefined();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('throws when the ingestion endpoint returns an error', async () => {
-    nock('http://ingest.example.com')
-      .post('/ingest')
-      .reply(500, 'Internal Server Error')
-      .persist();
+    fetchMock.mockResolvedValue(new Response('Internal Server Error', { status: 500 }));
 
     const client = new IngestClient(defaultConfig, defaultRetry, silentLogger);
     await expect(client.send([makeEvent()])).rejects.toThrow();

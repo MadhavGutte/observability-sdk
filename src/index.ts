@@ -25,11 +25,8 @@ export type {
   SDKConfig,
   RetryConfig,
   BatchConfig,
-  PrometheusConfig,
   IngestConfig,
   ObservabilityEvent,
-  CounterMetric,
-  GaugeMetric,
   FlushResult,
   SDKErrorCode,
 } from './types';

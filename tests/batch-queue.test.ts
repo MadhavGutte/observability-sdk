@@ -20,11 +20,11 @@ function makeEvent(name = 'test_event'): ObservabilityEvent {
 
 describe('BatchQueue', () => {
   afterEach(() => {
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 
   it('enqueues events and reports correct size', () => {
-    const onFlush = jest.fn().mockResolvedValue(undefined);
+    const onFlush = vi.fn().mockResolvedValue(undefined);
     const queue = new BatchQueue({
       config: { maxSize: 10, flushIntervalMs: 60_000, flushTimeoutMs: 5_000 },
       logger: silentLogger,
@@ -38,7 +38,7 @@ describe('BatchQueue', () => {
 
   it('flushes all events and clears the queue', async () => {
     const flushed: ObservabilityEvent[][] = [];
-    const onFlush = jest.fn().mockImplementation(async (events) => {
+    const onFlush = vi.fn().mockImplementation(async (events) => {
       flushed.push(events);
     });
 
@@ -61,7 +61,7 @@ describe('BatchQueue', () => {
   });
 
   it('triggers immediate flush when queue reaches maxSize', async () => {
-    const onFlush = jest.fn().mockResolvedValue(undefined);
+    const onFlush = vi.fn().mockResolvedValue(undefined);
     const queue = new BatchQueue({
       config: { maxSize: 3, flushIntervalMs: 60_000, flushTimeoutMs: 5_000 },
       logger: silentLogger,
@@ -79,7 +79,7 @@ describe('BatchQueue', () => {
   });
 
   it('returns eventsCount=0 when queue is empty', async () => {
-    const onFlush = jest.fn().mockResolvedValue(undefined);
+    const onFlush = vi.fn().mockResolvedValue(undefined);
     const queue = new BatchQueue({
       config: { maxSize: 10, flushIntervalMs: 60_000, flushTimeoutMs: 5_000 },
       logger: silentLogger,
@@ -92,7 +92,7 @@ describe('BatchQueue', () => {
   });
 
   it('returns success=false and an error when onFlush rejects', async () => {
-    const onFlush = jest.fn().mockRejectedValue(new Error('network error'));
+    const onFlush = vi.fn().mockRejectedValue(new Error('network error'));
     const queue = new BatchQueue({
       config: { maxSize: 10, flushIntervalMs: 60_000, flushTimeoutMs: 5_000 },
       logger: silentLogger,
@@ -107,14 +107,14 @@ describe('BatchQueue', () => {
   });
 
   it('emits flushError event on failed flush', async () => {
-    const onFlush = jest.fn().mockRejectedValue(new Error('upstream down'));
+    const onFlush = vi.fn().mockRejectedValue(new Error('upstream down'));
     const queue = new BatchQueue({
       config: { maxSize: 10, flushIntervalMs: 60_000, flushTimeoutMs: 5_000 },
       logger: silentLogger,
       onFlush,
     });
 
-    const errorHandler = jest.fn();
+    const errorHandler = vi.fn();
     queue.on('flushError', errorHandler);
 
     queue.enqueue(makeEvent());
@@ -124,7 +124,7 @@ describe('BatchQueue', () => {
   });
 
   it('stops the timer and flushes remaining events on stop()', async () => {
-    const onFlush = jest.fn().mockResolvedValue(undefined);
+    const onFlush = vi.fn().mockResolvedValue(undefined);
     const queue = new BatchQueue({
       config: { maxSize: 100, flushIntervalMs: 60_000, flushTimeoutMs: 5_000 },
       logger: silentLogger,
@@ -138,7 +138,7 @@ describe('BatchQueue', () => {
   });
 
   it('handles flush timeout', async () => {
-    const onFlush = jest.fn().mockImplementation(
+    const onFlush = vi.fn().mockImplementation(
       () => new Promise((resolve) => setTimeout(resolve, 10_000)), // never resolves in time
     );
     const queue = new BatchQueue({

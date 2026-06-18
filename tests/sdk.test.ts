@@ -1,4 +1,3 @@
-import nock from 'nock';
 import { ObservabilitySDK } from '../src/sdk';
 import { SDKValidationError } from '../src/schema-validator';
 
@@ -15,14 +14,18 @@ async function initSDK(sdk: ObservabilitySDK, overrides: Record<string, unknown>
     logLevel: 'silent',
     apiUrl: `${INGEST_URL}/ingest`,
     batch: { maxSize: 100, flushIntervalMs: 60_000, flushTimeoutMs: 5_000 },
-    prometheus: { enabled: false, port: 0, path: '/metrics', collectDefaultMetrics: false, prefix: '' },
     ...overrides,
   });
 }
 
 describe('ObservabilitySDK', () => {
-  afterEach(() => {
-    nock.cleanAll();
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ status: 'ok', inserted: 1 }), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
   });
 
   // ─── init ──────────────────────────────────────────────────────────────────
@@ -83,65 +86,10 @@ describe('ObservabilitySDK', () => {
     });
   });
 
-  // ─── counter() ─────────────────────────────────────────────────────────────
-
-  describe('counter()', () => {
-    it('records a counter without throwing', async () => {
-      const sdk = makeSDK();
-      await initSDK(sdk);
-      expect(() => sdk.counter('http_requests_total', 1, { method: 'GET' })).not.toThrow();
-      await sdk.shutdown();
-    });
-
-    it('defaults value to 1', async () => {
-      const sdk = makeSDK();
-      await initSDK(sdk);
-      expect(() => sdk.counter('hits_total')).not.toThrow();
-      await sdk.shutdown();
-    });
-
-    it('throws SDKValidationError on negative value', async () => {
-      const sdk = makeSDK();
-      await initSDK(sdk);
-      expect(() => sdk.counter('c', -1)).toThrow(SDKValidationError);
-      await sdk.shutdown();
-    });
-
-    it('throws if called before init()', () => {
-      const sdk = makeSDK();
-      expect(() => sdk.counter('c', 1)).toThrow(/init\(\)/);
-    });
-  });
-
-  // ─── gauge() ───────────────────────────────────────────────────────────────
-
-  describe('gauge()', () => {
-    it('records a positive gauge', async () => {
-      const sdk = makeSDK();
-      await initSDK(sdk);
-      expect(() => sdk.gauge('memory_bytes', 1_048_576)).not.toThrow();
-      await sdk.shutdown();
-    });
-
-    it('records a negative gauge', async () => {
-      const sdk = makeSDK();
-      await initSDK(sdk);
-      expect(() => sdk.gauge('temperature_c', -12.5)).not.toThrow();
-      await sdk.shutdown();
-    });
-
-    it('throws if called before init()', () => {
-      const sdk = makeSDK();
-      expect(() => sdk.gauge('g', 1)).toThrow(/init\(\)/);
-    });
-  });
-
   // ─── flush() ───────────────────────────────────────────────────────────────
 
   describe('flush()', () => {
     it('flushes queued events and returns success', async () => {
-      nock(INGEST_URL).post('/ingest').reply(200, { status: 'ok', inserted: 1 });
-
       const sdk = makeSDK();
       await initSDK(sdk);
       sdk.event('test-service', 'signup', 1);
@@ -164,8 +112,6 @@ describe('ObservabilitySDK', () => {
 
   describe('shutdown()', () => {
     it('flushes remaining events on shutdown', async () => {
-      nock(INGEST_URL).post('/ingest').reply(200, { status: 'ok', inserted: 1 });
-
       const sdk = makeSDK();
       await initSDK(sdk);
       sdk.event('test-service', 'shutdown_event', 1);
