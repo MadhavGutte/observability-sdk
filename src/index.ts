@@ -8,8 +8,6 @@
  *   await metrics.init({ appName: 'my-service', environment: 'production', apiUrl: 'http://localhost:3100/ingest' });
  *
  *   metrics.event('my-service', 'user_signup', 1, { plan: 'pro' });
- *   metrics.counter('http_requests_total', 1, { method: 'GET' });
- *   metrics.gauge('queue_depth', 42);
  */
 
 // ─── Core class ───────────────────────────────────────────────────────────────
@@ -29,6 +27,10 @@ export type {
   ObservabilityEvent,
   FlushResult,
   SDKErrorCode,
+  EventAggregation,
+  EventSemanticDeclaration,
+  EventSemanticsMap,
+  RegisterSemanticsResult,
 } from './types';
 
 // ─── Errors ───────────────────────────────────────────────────────────────────
@@ -37,7 +39,7 @@ export { SDKValidationError } from './schema-validator';
 // ─── Singleton convenience export ─────────────────────────────────────────────
 // The `metrics` singleton is the primary entrypoint for most applications.
 // Import and call `await metrics.init(...)` once at startup, then use
-// `metrics.event()`, `metrics.counter()`, `metrics.gauge()` anywhere.
+// `metrics.event()` anywhere.
 import { ObservabilitySDK } from './sdk';
 
 /**
@@ -47,7 +49,5 @@ import { ObservabilitySDK } from './sdk';
  *   import { metrics } from '@observability/sdk';
  *   await metrics.init({ appName: 'checkout', environment: 'production' });
  *   metrics.event('checkout', 'order_placed', 99.99);
- *   metrics.counter('http_requests_total', 1, { method: 'POST' });
- *   metrics.gauge('active_connections', 17);
  */
 export const metrics = new ObservabilitySDK();

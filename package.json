@@ -1,6 +1,6 @@
 {
   "name": "@madhavgutte/observability-sdk",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Production-grade Node.js SDK for emitting observability events to a MySQL ingest proxy",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

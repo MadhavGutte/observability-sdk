@@ -6,6 +6,9 @@ import type {
   EventPayload,
   Labels,
   FlushResult,
+  EventSemanticsMap,
+  PlatformSemanticDeclaration,
+  RegisterSemanticsResult,
 } from './types';
 import { resolveConfig } from './config';
 import { Logger } from './logger';
@@ -18,9 +21,9 @@ import { IngestClient } from './ingest-client';
  *
  * Lifecycle:
  *   1. `await sdk.init({ appName, environment, ... })` — wires up all
- *      components and starts the Prometheus HTTP server + flush timer.
- *   2. Use `sdk.event()`, `sdk.counter()`, `sdk.gauge()` freely.
- *   3. `await sdk.shutdown()` — flushes the queue and stops servers.
+ *      components and starts the flush timer.
+ *   2. Use `sdk.event()` freely.
+ *   3. `await sdk.shutdown()` — flushes the queue and stops the flush timer.
  *
  * Thread-safety: Node.js is single-threaded; all public methods are safe to
  * call concurrently from async code.
@@ -77,10 +80,20 @@ export class ObservabilitySDK {
       environment: this.config.environment,
       ingestUrl: this.config.ingest.url,
     });
+
+    // Register declared event semantics with the platform catalog. Fire-and-forget:
+    // a catalog outage must never prevent the app from emitting events.
+    if (this.config.events && Object.keys(this.config.events).length > 0) {
+      void this.declareEvents(this.config.events).catch((err: unknown) => {
+        this.logger.warn('Event semantics registration failed (events still ingest normally)', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    }
   }
 
   /**
-   * Flushes any queued events and shuts down the Prometheus HTTP server.
+   * Flushes any queued events and stops the flush timer.
    * Safe to call multiple times.
    */
   async shutdown(): Promise<void> {
@@ -148,6 +161,38 @@ export class ObservabilitySDK {
   /** Returns true if the SDK has been successfully initialised. */
   isInitialised(): boolean {
     return this.initialised;
+  }
+
+  /**
+   * Declares the meaning of one or more event types to the platform's semantics
+   * catalog. Called automatically on init when `events` is supplied, but can also
+   * be called explicitly. `project_name` is this SDK instance's `appName`.
+   *
+   * Precedence: a semantics entry a human configured in the dashboard is never
+   * overwritten by an SDK declaration.
+   *
+   * @example
+   *   await metrics.declareEvents({
+   *     new_customer: { aggregation: 'sum', unit: 'customers', aliases: ['signups'] },
+   *     deploy:       { aggregation: 'count' },
+   *   });
+   */
+  async declareEvents(events: EventSemanticsMap): Promise<RegisterSemanticsResult> {
+    this.assertInitialised('declareEvents');
+
+    const declarations: PlatformSemanticDeclaration[] = Object.entries(events).map(
+      ([eventName, decl]) => ({
+        project_name: this.config.appName,
+        event_type: eventName,
+        default_aggregation: decl.aggregation,
+        metric_unit: decl.unit ?? null,
+        display_name: decl.displayName ?? null,
+        description: decl.description ?? null,
+        aliases: decl.aliases ?? [],
+      }),
+    );
+
+    return this.ingest.registerSemantics(declarations);
   }
 
   // ─── Internal helpers ──────────────────────────────────────────────────────

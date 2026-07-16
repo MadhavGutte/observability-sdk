@@ -43,6 +43,8 @@ export interface IngestConfig {
   url: string;
   /** Request timeout in ms (default: 10_000) */
   timeoutMs: number;
+  /** Full URL to the semantics registration endpoint. Derived from `url` when omitted. */
+  semanticsUrl?: string;
 }
 
 export interface SDKConfig {
@@ -60,6 +62,8 @@ export interface SDKConfig {
   ingest: IngestConfig;
   /** Global labels appended to every event */
   globalLabels?: Labels;
+  /** Event semantics declared up front, registered with the platform on init */
+  events?: EventSemanticsMap;
 }
 
 /** User-supplied partial config merged with defaults */
@@ -72,7 +76,56 @@ export type SDKInitOptions = {
   /** URL of the observability ingest proxy (e.g. 'http://localhost:3100/ingest') */
   apiUrl: string;
   globalLabels?: Labels;
+  /**
+   * Optional map of eventName → its meaning. When provided, the SDK registers
+   * these with the platform's semantics catalog on init so the AI assistant can
+   * answer questions about them without a human configuring each one. A human
+   * dashboard edit always takes precedence over an SDK declaration.
+   */
+  events?: EventSemanticsMap;
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Event semantics declaration
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** How a metric event's value should be aggregated when answering "how many". */
+export type EventAggregation = 'count' | 'sum' | 'avg' | 'min' | 'max';
+
+/** Declares what one event type means. Sent once to the platform catalog. */
+export interface EventSemanticDeclaration {
+  /** Count events, or aggregate their metric_value (sum/avg/min/max). */
+  aggregation: EventAggregation;
+  /** Unit label shown to users, e.g. 'customers', 'milliseconds'. */
+  unit?: string;
+  /** Human-friendly name, e.g. 'New customers'. */
+  displayName?: string;
+  /** Longer description of what the event represents. */
+  description?: string;
+  /** Alternative phrasings a user might ask about, e.g. ['signups']. */
+  aliases?: string[];
+}
+
+/** Map of eventName → its declared semantics. */
+export type EventSemanticsMap = Record<string, EventSemanticDeclaration>;
+
+/** Wire shape sent to the platform's POST /ingest/semantics endpoint. */
+export interface PlatformSemanticDeclaration {
+  project_name: string;
+  event_type: string;
+  default_aggregation: EventAggregation;
+  metric_unit: string | null;
+  display_name: string | null;
+  description: string | null;
+  aliases: string[];
+}
+
+/** Result of registering event semantics with the platform. */
+export interface RegisterSemanticsResult {
+  registered: number;
+  skipped: number;
+  invalid: number;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Event / Metric domain objects

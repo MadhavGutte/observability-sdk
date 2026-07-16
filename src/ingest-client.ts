@@ -1,4 +1,4 @@
-import type { IngestConfig, ObservabilityEvent } from './types';
+import type { IngestConfig, ObservabilityEvent, PlatformSemanticDeclaration, RegisterSemanticsResult } from './types';
 import type { Logger } from './logger';
 import { RetryClient } from './retry-client';
 import type { RetryConfig } from './types';
@@ -72,4 +72,43 @@ export class IngestClient {
       count: mapped.length,
     });
   }
+
+  /**
+   * Registers event-semantics declarations with the platform catalog.
+   * Idempotent on the server: rows a human configured in the dashboard are never
+   * overwritten. Returns the platform's { registered, skipped, invalid } summary.
+   */
+  async registerSemantics(declarations: PlatformSemanticDeclaration[]): Promise<RegisterSemanticsResult> {
+    const empty: RegisterSemanticsResult = { registered: 0, skipped: 0, invalid: 0 };
+    if (declarations.length === 0) return empty;
+
+    const url = this.config.semanticsUrl ?? deriveSemanticsUrlFallback(this.config.url);
+    const body = JSON.stringify(declarations);
+
+    this.logger.debug('Registering event semantics', { url, count: declarations.length });
+
+    const result = await this.retryClient.post<RegisterSemanticsResult>(
+      url,
+      body,
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'X-SDK-Version': SDK_VERSION,
+        },
+      },
+    );
+
+    this.logger.info('Event semantics registered', {
+      registered: (result ?? empty).registered,
+      skipped: (result ?? empty).skipped,
+      invalid: (result ?? empty).invalid,
+    });
+    return result ?? empty;
+  }
+}
+
+/** Fallback used only when config.semanticsUrl is absent (e.g. hand-built config in tests). */
+function deriveSemanticsUrlFallback(ingestUrl: string): string {
+  const trimmed = ingestUrl.replace(/\/+$/, '');
+  return /\/ingest$/.test(trimmed) ? `${trimmed}/semantics` : `${trimmed}/ingest/semantics`;
 }

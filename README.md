@@ -3,7 +3,6 @@
 A production-grade Node.js/TypeScript SDK for emitting observability data:
 
 - **Project events** → MySQL via the [ingest-proxy](../observability-infra) (batched JSON ingestion)
-- **Technical metrics** → Prometheus (scraped `/metrics` endpoint)
 
 ---
 
@@ -35,13 +34,7 @@ await metrics.init({
 //    Pass status in payload — it maps to project_events.status
 metrics.event('my-af-observability', 'deploy', 42000, { status: 'success', environment: 'dev', version: 'abc123' });
 
-// 3. Increment a Prometheus counter (→ /metrics)
-metrics.counter('http_requests_total', 1, { method: 'POST', status: '200' });
-
-// 4. Set a Prometheus gauge (→ /metrics)
-metrics.gauge('memory_heap_used_bytes', process.memoryUsage().heapUsed);
-
-// 5. Shutdown gracefully (also auto-wired to SIGTERM / SIGINT)
+// 3. Shutdown gracefully (also auto-wired to SIGTERM / SIGINT)
 await metrics.shutdown();
 ```
 
@@ -60,21 +53,64 @@ Initialises the SDK. Must be called **once** before any metric methods.
 | `apiUrl` | `string` | **required** | Full URL of the ingest proxy endpoint (e.g. `http://localhost:3100/ingest`) |
 | `logLevel` | `string` | `'warn'` | `silent` \| `error` \| `warn` \| `info` \| `debug` |
 | `globalLabels` | `object` | `{}` | Labels appended to every event. **Set `team` here** to populate `project_events.team` |
-| `prometheus` | `object` | see below | Prometheus exporter config |
+| `events` | `object` | `{}` | Optional map of event semantics (see [Declaring event semantics](#declaring-event-semantics)) |
 | `batch` | `object` | see below | Batching config |
 | `retry` | `object` | see below | Retry config |
 
-#### `prometheus` defaults
+---
+
+## Declaring event semantics
+
+The observability platform ships an AI assistant that answers questions like
+*"how many new customers in the last 7 days?"*. To answer correctly it must know
+whether "how many" means **counting events** or **summing `metric_value`** — and
+that meaning lives in your service, not in the data.
+
+Declare it once, where you know it best. The SDK registers your declarations with
+the platform's semantics catalog on init.
+
 ```typescript
-{
-  enabled: true,
-  port: 9464,           // scrape port
-  path: '/metrics',
-  prefix: '',           // prepended to all metric names
-  collectDefaultMetrics: true,  // Node.js process metrics
-  defaultLabels: {},
-}
+await metrics.init({
+  appName: 'checkout',
+  environment: 'production',
+  apiUrl: 'http://localhost:3100/ingest',
+  globalLabels: { team: 'growth' },
+
+  events: {
+    // "how many new customers" → SUM(metric_value), shown as "customers"
+    new_customer: { aggregation: 'sum', unit: 'customers', aliases: ['signups', 'new users'] },
+    // "how many deploys" → COUNT(*) of events
+    deploy:       { aggregation: 'count', displayName: 'Deployments' },
+  },
+});
 ```
+
+You can also declare later, explicitly:
+
+```typescript
+await metrics.declareEvents({
+  order_placed: { aggregation: 'sum', unit: 'currency', description: 'Completed checkout orders' },
+});
+```
+
+**Declaration fields** (per event):
+
+| Field | Type | Description |
+|---|---|---|
+| `aggregation` | `'count' \| 'sum' \| 'avg' \| 'min' \| 'max'` | **required** — how the value is interpreted |
+| `unit` | `string` | Unit label shown to users (e.g. `customers`) |
+| `displayName` | `string` | Human-friendly name |
+| `description` | `string` | What the event represents |
+| `aliases` | `string[]` | Alternative phrasings a user might ask about |
+
+Notes:
+- Registration is **fire-and-forget** on init — a catalog outage never blocks event ingestion.
+- **Precedence:** a semantics entry a human edits in the dashboard is **never** overwritten by an SDK declaration.
+- Transport: declarations are POSTed to `<apiUrl>/semantics` (i.e. `/ingest/semantics`), the same private machine route as ingestion.
+
+---
+
+## Batching & retry config
 
 #### `batch` defaults
 ```typescript
@@ -122,31 +158,6 @@ Throws `SDKValidationError` on invalid input.
 
 ---
 
-### `metrics.counter(name, value?, labels?)`
-
-Increments a Prometheus counter.
-
-```typescript
-metrics.counter('http_requests_total', 1, { method: 'GET', status: '200' });
-metrics.counter('cache_hits_total');  // value defaults to 1
-```
-
-- `name` must be a valid Prometheus metric name: `/^[a-zA-Z_:][a-zA-Z0-9_:]*$/`
-- `value` must be ≥ 0
-
----
-
-### `metrics.gauge(name, value, labels?)`
-
-Sets a Prometheus gauge to an arbitrary value (can be negative).
-
-```typescript
-metrics.gauge('memory_heap_used_bytes', process.memoryUsage().heapUsed);
-metrics.gauge('active_deployments', 3);
-```
-
----
-
 ### `metrics.flush()`
 
 Manually flushes all queued events immediately. Returns a `FlushResult`.
@@ -159,7 +170,7 @@ const { success, eventsCount, error } = await metrics.flush();
 
 ### `metrics.shutdown()`
 
-Flushes remaining events and stops the Prometheus HTTP server. Also called automatically on `SIGTERM`, `SIGINT`, and `beforeExit`.
+Flushes remaining events and stops the flush timer. Also called automatically on `SIGTERM`, `SIGINT`, and `beforeExit`.
 
 ---
 
@@ -196,20 +207,6 @@ Example payload sent to the proxy:
 ```
 
 See the [ingest-proxy README](../observability-infra/README.md) for the full API reference including `GET /events`.
-
----
-
-## Prometheus Integration
-
-The SDK starts an HTTP server (default port **9464**). Point your Prometheus scrape config at it:
-
-```yaml
-# prometheus.yml
-scrape_configs:
-  - job_name: 'my-service'
-    static_configs:
-      - targets: ['my-service:9464']
-```
 
 ---
 
